@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Campsite Dogs v6</title>
+<title>Campsite Dogs v7</title>
 <link rel="manifest" href="manifest.json">
 <meta name="theme-color" content="#3f6b3f">
 <style>
@@ -37,9 +37,11 @@ svg#leashes{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-e
 .brown .body,.brown .head,.brown .ear,.brown .tail{background:#8b5a2b}
 .corgi .body{height:26px;top:18px;width:58px}.corgi .legs{top:40px;font-size:10px}
 .coton .body,.coton .head,.coton .ear,.coton .tail{background:#f6f1e8;border:1px solid #d9d3c8}.coton .face{color:#333}
-.obstacle{position:absolute;z-index:4;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:900;box-shadow:0 5px 0 rgba(0,0,0,.18);touch-action:none;border:2px solid rgba(0,0,0,.12)}
-.obstacle.sticky{outline:4px dashed rgba(176,54,47,.4)}
-.chair{width:78px;height:66px;background:#dfad68}.table{width:126px;height:82px;background:#b57b48}.cooler{width:86px;height:64px;background:#6ab7d8}.tent{width:116px;height:88px;background:#e9865c;clip-path:polygon(50% 0,100% 100%,0 100%);border:0}.fire{width:82px;height:82px;border-radius:50%;background:#5a4a3c;color:#ffcf55}
+.obstacle{position:absolute;z-index:4;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;font-weight:900;box-shadow:0 5px 0 rgba(0,0,0,.18);touch-action:none;border:2px solid rgba(0,0,0,.12)}
+.obstacle.fixed{outline:4px solid rgba(60,60,60,.25)}
+.obstacle.moveable{outline:4px dashed rgba(176,54,47,.35)}
+.chair{width:58px;height:52px;background:#dfad68}.table{width:94px;height:62px;background:#b57b48}.tent{width:88px;height:68px;background:#e9865c;clip-path:polygon(50% 0,100% 100%,0 100%);border:0}.ezup{width:95px;height:62px;background:#9fc9f4}.fire{width:76px;height:76px;border-radius:50%;background:#5a4a3c;color:#ffcf55}
+.lock{position:absolute;right:3px;bottom:1px;font-size:12px;background:#fff;border-radius:8px;padding:0 3px}
 #panel{position:absolute;bottom:10px;left:10px;right:10px;background:rgba(255,248,232,.95);border-radius:14px;padding:10px;z-index:10;box-shadow:0 3px 10px rgba(0,0,0,.18)}
 #whineOuter{height:14px;background:#e1d8c4;border-radius:999px;overflow:hidden}
 #whine{height:100%;width:0%;background:#c84b40;transition:width .12s linear}
@@ -49,21 +51,21 @@ svg#leashes{position:absolute;inset:0;width:100%;height:100%;z-index:1;pointer-e
 </head>
 <body>
 <header><h1>🏕️ Campsite Dogs</h1><button id="newGame">New Game</button></header>
-<div id="info">Dogs now gravitate toward furniture and can get stuck. Drag the dog back around the object or move the furniture.</div>
+<div id="info">Only chairs move. Tables, tents, EZ Ups, and fire pit are fixed. Dogs have fixed leash length and get stuck when tangles use it up.</div>
 <main id="game">
   <svg id="leashes"></svg>
   <div id="panel">
     <div id="whineOuter"><div id="whine"></div></div>
     <div id="status">Loading campsite...</div>
-    <div id="mini">Red = furniture wrap/stuck. Purple = dog-to-dog tangle.</div>
+    <div id="mini">Drag dogs around obstacles to unwind. Red = furniture wrap. Purple = dog-to-dog crossing.</div>
   </div>
 </main>
 <script>
 const DOGS=[
 {name:"Reba",breed:"brown corgi",className:"dog brown corgi",speed:.85,leash:150,patience:.75,curiosity:.9},
-{name:"Mollye",breed:"brown German Shepherd",className:"dog brown",speed:1.25,leash:165,patience:1.2,curiosity:1.4},
+{name:"Mollye",breed:"brown German Shepherd",className:"dog brown",speed:1.25,leash:165,patience:1.2,curiosity:1.35},
 {name:"Stella",breed:"black lab",className:"dog black",speed:1.08,leash:165,patience:1.0,curiosity:1.25},
-{name:"Percy",breed:"Coton",className:"dog coton",speed:1.38,leash:155,patience:1.35,curiosity:1.6},
+{name:"Percy",breed:"Coton",className:"dog coton",speed:1.38,leash:155,patience:1.35,curiosity:1.55},
 {name:"Lizzie",breed:"black lab",className:"dog black",speed:1.15,leash:170,patience:1.1,curiosity:1.35}
 ];
 const game=document.getElementById("game"), leashSvg=document.getElementById("leashes"), whine=document.getElementById("whine"), statusEl=document.getElementById("status");
@@ -73,11 +75,45 @@ function ccw(A,B,C){return (C.y-A.y)*(B.x-A.x)>(B.y-A.y)*(C.x-A.x)}
 function segmentsIntersect(A,B,C,D){return ccw(A,C,D)!=ccw(B,C,D)&&ccw(A,B,C)!=ccw(A,B,D)}
 function clearGame(){[...game.querySelectorAll(".dog,.stake,.obstacle")].forEach(e=>e.remove());leashSvg.innerHTML="";dogs=[];obstacles=[];whineMeter=0;warnings=0;clearTime=0}
 function startGame(){level=1;buildLevel()}
+function pctX(v){return game.clientWidth*v} function pctY(v){return game.clientHeight*v}
+function makeObstacle(type,label,x,y,moveable=false){
+ const ob=document.createElement("div");
+ ob.className=`obstacle ${type} ${moveable?"moveable":"fixed"}`;
+ ob.innerHTML=label+(moveable?"":"<span class='lock'>🔒</span>");
+ ob.dataset.id=obstacles.length; ob.dataset.moveable=moveable?"true":"false";
+ ob.style.left=x+"px"; ob.style.top=y+"px";
+ if(moveable) ob.addEventListener("pointerdown",startDragObstacle);
+ game.appendChild(ob); obstacles.push(ob);
+}
+function buildObstacles(){
+ const w=game.clientWidth,h=game.clientHeight,cx=w*.5,cy=h*.43;
+ // Fixed campground structures: 4 tents, 3 EZ Ups, 4 tables, 1 fire pit
+ makeObstacle("tent","",pctX(.08),pctY(.10),false);
+ makeObstacle("tent","",pctX(.74),pctY(.10),false);
+ makeObstacle("tent","",pctX(.07),pctY(.68),false);
+ makeObstacle("tent","",pctX(.75),pctY(.69),false);
+ makeObstacle("ezup","EZ",pctX(.35),pctY(.08),false);
+ makeObstacle("ezup","EZ",pctX(.60),pctY(.08),false);
+ makeObstacle("ezup","EZ",pctX(.42),pctY(.71),false);
+ makeObstacle("table","▤",pctX(.20),pctY(.34),false);
+ makeObstacle("table","▤",pctX(.58),pctY(.32),false);
+ makeObstacle("table","▤",pctX(.28),pctY(.55),false);
+ makeObstacle("table","▤",pctX(.63),pctY(.56),false);
+ makeObstacle("fire","🔥",pctX(.47),pctY(.48),false);
+ // Moveable: 6 chairs
+ makeObstacle("chair","🪑",pctX(.42),pctY(.34),true);
+ makeObstacle("chair","🪑",pctX(.50),pctY(.34),true);
+ makeObstacle("chair","🪑",pctX(.39),pctY(.54),true);
+ makeObstacle("chair","🪑",pctX(.54),pctY(.54),true);
+ makeObstacle("chair","🪑",pctX(.18),pctY(.50),true);
+ makeObstacle("chair","🪑",pctX(.72),pctY(.45),true);
+}
 function buildLevel(){
  clearGame();
  const w=game.clientWidth,h=game.clientHeight,cx=w*.5,cy=h*.43;
  const stakePositions=[[cx-45,cy-42],[cx+45,cy-42],[cx-55,cy+42],[cx+55,cy+42],[cx,cy+88]];
  const dogStarts=[[cx+48,cy+15],[cx-35,cy+20],[cx+18,cy-50],[cx-68,cy-8],[cx+70,cy-16]];
+ buildObstacles();
  DOGS.slice(0,level).forEach((d,i)=>{
   const [sx,sy]=stakePositions[i], [x,y]=dogStarts[i];
   const stake=document.createElement("div"); stake.className="stake"; stake.style.left=sx+"px"; stake.style.top=sy+"px"; game.appendChild(stake);
@@ -86,46 +122,65 @@ function buildLevel(){
   dog.addEventListener("pointerdown",startDragDog); game.appendChild(dog);
   dogs.push({...d,el:dog,path,stakeX:sx,stakeY:sy,x,y,tx:x+rand(-35,35),ty:y+rand(-35,35),wrapped:[],dogTangled:false,held:false,stuckOn:null,stuckTimer:0});
  });
- const obs=[["chair","🪑",cx-105,cy+8],["table","▤",cx+58,cy+16],["cooler","🧊",cx-20,cy-88],["tent","",cx+92,cy-78],["fire","🔥",cx-96,cy-70]].slice(0,Math.min(level+1,5));
- obs.forEach(([cls,label,x,y],idx)=>{const ob=document.createElement("div"); ob.className="obstacle sticky "+cls; ob.textContent=label; ob.dataset.id=idx; ob.style.left=x+"px"; ob.style.top=y+"px"; ob.addEventListener("pointerdown",startDragObstacle); game.appendChild(ob); obstacles.push(ob)});
  if(loop) cancelAnimationFrame(loop); last=performance.now(); loop=requestAnimationFrame(tick);
 }
 function startDragObstacle(e){dragging=e.currentTarget;dragType="obstacle";dragging.setPointerCapture(e.pointerId);const r=dragging.getBoundingClientRect();offX=e.clientX-r.left;offY=e.clientY-r.top;dragging.addEventListener("pointermove",moveDrag);dragging.addEventListener("pointerup",endDrag)}
 function startDragDog(e){dragging=e.currentTarget;dragType="dog";dragging.classList.add("dragging");dragging.setPointerCapture(e.pointerId);const d=dogs.find(x=>x.el===dragging);d.held=true;d.stuckOn=null;d.stuckTimer=0;const gr=game.getBoundingClientRect();offX=e.clientX-gr.left-d.x;offY=e.clientY-gr.top-d.y;dragging.addEventListener("pointermove",moveDrag);dragging.addEventListener("pointerup",endDrag)}
+function usedLeash(d){
+ let pts=[{x:d.stakeX,y:d.stakeY},...d.wrapped,{x:d.x,y:d.y}],total=0;
+ for(let i=0;i<pts.length-1;i++) total += distance(pts[i].x,pts[i].y,pts[i+1].x,pts[i+1].y);
+ return total;
+}
+function constrainDogToLeash(d,x,y){
+ const savedX=d.x,savedY=d.y; d.x=x; d.y=y;
+ const used=usedLeash(d);
+ if(used>d.leash){
+   const prev=d.wrapped.length?d.wrapped[d.wrapped.length-1]:{x:d.stakeX,y:d.stakeY};
+   const remaining=Math.max(8,d.leash-(used-distance(prev.x,prev.y,x,y)));
+   const a=Math.atan2(y-prev.y,x-prev.x);
+   x=prev.x+Math.cos(a)*remaining; y=prev.y+Math.sin(a)*remaining;
+   d.stuckOn=d.wrapped.length?d.wrapped[d.wrapped.length-1].id:d.stuckOn;
+ }
+ d.x=savedX; d.y=savedY; return {x,y};
+}
 function moveDrag(e){
  const gr=game.getBoundingClientRect();
- if(dragType==="obstacle"){let x=e.clientX-gr.left-offX,y=e.clientY-gr.top-offY;x=Math.max(0,Math.min(game.clientWidth-dragging.offsetWidth,x));y=Math.max(0,Math.min(game.clientHeight-dragging.offsetHeight,y));dragging.style.left=x+"px";dragging.style.top=y+"px";}
- if(dragType==="dog"){const d=dogs.find(x=>x.el===dragging);let x=e.clientX-gr.left-offX,y=e.clientY-gr.top-offY;const away=distance(x,y,d.stakeX,d.stakeY);if(away>d.leash){const a=Math.atan2(y-d.stakeY,x-d.stakeX);x=d.stakeX+Math.cos(a)*d.leash;y=d.stakeY+Math.sin(a)*d.leash}d.x=Math.max(30,Math.min(game.clientWidth-30,x));d.y=Math.max(30,Math.min(game.clientHeight-105,y));d.tx=d.x;d.ty=d.y;}
+ if(dragType==="obstacle"){
+   let x=e.clientX-gr.left-offX,y=e.clientY-gr.top-offY;
+   x=Math.max(0,Math.min(game.clientWidth-dragging.offsetWidth,x)); y=Math.max(0,Math.min(game.clientHeight-dragging.offsetHeight,y));
+   dragging.style.left=x+"px";dragging.style.top=y+"px";
+ }
+ if(dragType==="dog"){
+   const d=dogs.find(x=>x.el===dragging);let x=e.clientX-gr.left-offX,y=e.clientY-gr.top-offY;
+   let p=constrainDogToLeash(d,x,y); x=p.x; y=p.y;
+   d.x=Math.max(30,Math.min(game.clientWidth-30,x));d.y=Math.max(30,Math.min(game.clientHeight-105,y));d.tx=d.x;d.ty=d.y;
+ }
 }
 function endDrag(e){if(dragging){dragging.classList.remove("dragging");dragging.removeEventListener("pointermove",moveDrag);dragging.removeEventListener("pointerup",endDrag)} if(dragType==="dog"){const d=dogs.find(x=>x.el===dragging);if(d)d.held=false} dragging=null;dragType=null}
 function obstacleCenter(ob){return{x:ob.offsetLeft+ob.offsetWidth/2,y:ob.offsetTop+ob.offsetHeight/2,r:Math.max(ob.offsetWidth,ob.offsetHeight)/2}}
-function lineHitsObstacle(x1,y1,x2,y2,ob){const c=obstacleCenter(ob),dx=x2-x1,dy=y2-y1,len2=dx*dx+dy*dy||1;let t=((c.x-x1)*dx+(c.y-y1)*dy)/len2;t=Math.max(0,Math.min(1,t));const px=x1+t*dx,py=y1+t*dy;return distance(px,py,c.x,c.y)<c.r*.98}
+function lineHitsObstacle(x1,y1,x2,y2,ob){const c=obstacleCenter(ob),dx=x2-x1,dy=y2-y1,len2=dx*dx+dy*dy||1;let t=((c.x-x1)*dx+(c.y-y1)*dy)/len2;t=Math.max(0,Math.min(1,t));const px=x1+t*dx,py=y1+t*dy;return distance(px,py,c.x,c.y)<c.r*.82}
 function chooseTarget(d){
-  // 70% of the time, dogs investigate furniture, making furniture tangles much more likely.
-  if(obstacles.length && Math.random() < 0.70*d.curiosity){
-    const ob=obstacles[Math.floor(Math.random()*obstacles.length)];
-    const c=obstacleCenter(ob), a=rand(0,Math.PI*2), r=rand(5,c.r*.65);
-    d.tx=c.x+Math.cos(a)*r; d.ty=c.y+Math.sin(a)*r;
-  } else {
-    const a=rand(0,Math.PI*2),r=rand(d.leash*.15,d.leash*.75);
-    d.tx=d.stakeX+Math.cos(a)*r; d.ty=d.stakeY+Math.sin(a)*r;
-  }
+ if(obstacles.length && Math.random()<0.82*d.curiosity){
+   const ob=obstacles[Math.floor(Math.random()*obstacles.length)], c=obstacleCenter(ob), a=rand(0,Math.PI*2), r=rand(0,c.r*.75);
+   d.tx=c.x+Math.cos(a)*r; d.ty=c.y+Math.sin(a)*r;
+ } else {
+   const a=rand(0,Math.PI*2),r=rand(d.leash*.12,d.leash*.65); d.tx=d.stakeX+Math.cos(a)*r; d.ty=d.stakeY+Math.sin(a)*r;
+ }
 }
 function moveDogs(dt){
- dogs.forEach((d,i)=>{
+ dogs.forEach(d=>{
   if(d.held)return;
   if(d.stuckOn){
     const ob=obstacles.find(o=>o.dataset.id===d.stuckOn);
-    if(ob){const c=obstacleCenter(ob); d.x += (c.x-d.x)*0.035; d.y += (c.y-d.y)*0.035; d.stuckTimer += dt; if(d.stuckTimer>1800 && Math.random()<.02) chooseTarget(d);}
+    if(ob){const c=obstacleCenter(ob); d.x+=(c.x-d.x)*0.025; d.y+=(c.y-d.y)*0.025; d.stuckTimer+=dt;}
     return;
   }
   if(distance(d.x,d.y,d.tx,d.ty)<14||Math.random()<.012)chooseTarget(d);
   if(d.name==="Lizzie"&&dogs.length>1&&Math.random()<.02){const o=dogs[Math.floor(Math.random()*(dogs.length-1))];d.tx=o.x+rand(-25,25);d.ty=o.y+rand(-25,25)}
   const a=Math.atan2(d.ty-d.y,d.tx-d.x);
-  d.x+=Math.cos(a)*d.speed*dt*.058; d.y+=Math.sin(a)*d.speed*dt*.058;
-  const away=distance(d.x,d.y,d.stakeX,d.stakeY);
-  if(away>d.leash){const aa=Math.atan2(d.y-d.stakeY,d.x-d.stakeX);d.x=d.stakeX+Math.cos(aa)*d.leash;d.y=d.stakeY+Math.sin(aa)*d.leash;chooseTarget(d)}
-  d.x=Math.max(30,Math.min(game.clientWidth-30,d.x));d.y=Math.max(30,Math.min(game.clientHeight-105,d.y));
+  let nx=d.x+Math.cos(a)*d.speed*dt*.058, ny=d.y+Math.sin(a)*d.speed*dt*.058;
+  const p=constrainDogToLeash(d,nx,ny); nx=p.x; ny=p.y;
+  d.x=Math.max(30,Math.min(game.clientWidth-30,nx));d.y=Math.max(30,Math.min(game.clientHeight-105,ny));
  });
 }
 function updateFurnitureWraps(){
@@ -133,33 +188,34 @@ function updateFurnitureWraps(){
   const start=d.wrapped.length?d.wrapped[d.wrapped.length-1]:{x:d.stakeX,y:d.stakeY};
   obstacles.forEach(ob=>{
     const c=obstacleCenter(ob);
-    const dogNearFurniture = distance(d.x,d.y,c.x,c.y) < c.r*.78;
-    const leashCrossesFurniture = lineHitsObstacle(start.x,start.y,d.x,d.y,ob);
-    if(!d.wrapped.some(w=>w.id===ob.dataset.id) && (leashCrossesFurniture || dogNearFurniture)){
+    const dogNear = distance(d.x,d.y,c.x,c.y) < c.r*.72;
+    const crosses = lineHitsObstacle(start.x,start.y,d.x,d.y,ob);
+    if(!d.wrapped.some(w=>w.id===ob.dataset.id) && (crosses || dogNear)){
       d.wrapped.push({id:ob.dataset.id,x:c.x,y:c.y});
-      if(dogNearFurniture && Math.random()<0.85){ d.stuckOn=ob.dataset.id; d.stuckTimer=0; }
+      if(dogNear || usedLeash(d)>d.leash*.92){d.stuckOn=ob.dataset.id;d.stuckTimer=0;}
     }
   });
   d.wrapped=d.wrapped.filter((wrap,i)=>{
-    const ob=obstacles.find(o=>o.dataset.id===wrap.id);if(!ob)return false;
-    const c=obstacleCenter(ob);wrap.x=c.x;wrap.y=c.y;
+    const ob=obstacles.find(o=>o.dataset.id===wrap.id); if(!ob)return false;
+    const c=obstacleCenter(ob); wrap.x=c.x; wrap.y=c.y;
     const prev=i===0?{x:d.stakeX,y:d.stakeY}:d.wrapped[i-1];
-    const stillWrapped = lineHitsObstacle(prev.x,prev.y,d.x,d.y,ob) || distance(d.x,d.y,c.x,c.y)<c.r*.95 || i<d.wrapped.length-1;
-    if(!stillWrapped && d.stuckOn===wrap.id){d.stuckOn=null;d.stuckTimer=0;}
-    return stillWrapped;
+    const still = lineHitsObstacle(prev.x,prev.y,d.x,d.y,ob) || distance(d.x,d.y,c.x,c.y)<c.r*.88 || i<d.wrapped.length-1;
+    if(!still && d.stuckOn===wrap.id){d.stuckOn=null;d.stuckTimer=0;}
+    return still;
   });
+  if(usedLeash(d)>d.leash*.96 && d.wrapped.length){d.stuckOn=d.wrapped[d.wrapped.length-1].id; d.stuckTimer+=16;}
  });
 }
 function leashSegments(d){const pts=[{x:d.stakeX,y:d.stakeY},...d.wrapped,{x:d.x,y:d.y}],segs=[];for(let i=0;i<pts.length-1;i++)segs.push([pts[i],pts[i+1]]);return segs}
 function updateDogCrossings(){dogs.forEach(d=>d.dogTangled=false);for(let i=0;i<dogs.length;i++)for(let j=i+1;j<dogs.length;j++){let crossed=false;for(const a of leashSegments(dogs[i]))for(const b of leashSegments(dogs[j]))if(segmentsIntersect(a[0],a[1],b[0],b[1]))crossed=true;if(crossed){dogs[i].dogTangled=true;dogs[j].dogTangled=true}}}
-function drawLeashes(){dogs.forEach(d=>{const pts=[{x:d.stakeX,y:d.stakeY},...d.wrapped,{x:d.x,y:d.y}];d.path.setAttribute("d",pts.map((p,i)=>(i?"L":"M")+p.x.toFixed(1)+" "+p.y.toFixed(1)).join(" "));d.path.setAttribute("class",d.dogTangled?"leashPath dogTangled":(d.wrapped.length?"leashPath furnitureTangled":"leashPath"));d.el.style.left=d.x+"px";d.el.style.top=d.y+"px";d.el.classList.toggle("stuck",!!d.stuckOn);d.el.style.filter=(d.dogTangled||d.wrapped.length)?"drop-shadow(0 0 8px #c84b40)":""})}
+function drawLeashes(){dogs.forEach(d=>{const pts=[{x:d.stakeX,y:d.stakeY},...d.wrapped,{x:d.x,y:d.y}];d.path.setAttribute("d",pts.map((p,i)=>(i?"L":"M")+p.x.toFixed(1)+" "+p.y.toFixed(1)).join(" "));d.path.setAttribute("class",d.dogTangled?"leashPath dogTangled":(d.wrapped.length?"leashPath furnitureTangled":"leashPath"));d.el.style.left=d.x+"px";d.el.style.top=d.y+"px";d.el.classList.toggle("stuck",!!d.stuckOn);d.el.style.filter=(d.dogTangled||d.wrapped.length||d.stuckOn)?"drop-shadow(0 0 8px #c84b40)":""})}
 function updateWhine(dt){
  const tangled=dogs.filter(d=>d.wrapped.length||d.dogTangled||d.stuckOn);
- if(tangled.length)whineMeter+=tangled.reduce((a,d)=>a+d.patience+(d.wrapped.length*.65)+(d.dogTangled?.8:0)+(d.stuckOn?1.2:0),0)*dt*.011;else whineMeter-=dt*.02;
+ if(tangled.length)whineMeter+=tangled.reduce((a,d)=>a+d.patience+(d.wrapped.length*.75)+(d.dogTangled?.8:0)+(d.stuckOn?1.8:0)+(usedLeash(d)>d.leash*.92?1.2:0),0)*dt*.011;else whineMeter-=dt*.02;
  whineMeter=Math.max(0,Math.min(100,whineMeter));whine.style.width=whineMeter+"%";
  if(whineMeter>=100){warnings++;whineMeter=25;dogs.forEach(d=>{d.wrapped=[];d.dogTangled=false;d.stuckOn=null;chooseTarget(d)});statusEl.textContent=`🚨 Campground host warning ${warnings}/3! Dogs reset.`;if(warnings>=3)setTimeout(buildLevel,900)}
- else if(tangled.length){const names=tangled.map(d=>d.name).join(", ");statusEl.textContent=`${names} stuck/tangled! Drag dogs away and back around furniture, or move the furniture.`}
- else statusEl.textContent=`Level ${level}: keep ${dogs.map(d=>d.name).join(", ")} out of the furniture.`;
+ else if(tangled.length){const names=tangled.map(d=>d.name).join(", ");statusEl.textContent=`${names} stuck/tangled! Drag dogs back around fixed objects; only chairs can move.`}
+ else statusEl.textContent=`Level ${level}: fixed campground is crowded. Keep ${dogs.map(d=>d.name).join(", ")} from using up their leashes.`;
 }
 function checkWin(dt){const any=dogs.some(d=>d.wrapped.length||d.dogTangled||d.stuckOn);if(!any&&whineMeter<10)clearTime+=dt;else clearTime=0;if(clearTime>9000){clearTime=0;if(level<DOGS.length){level++;statusEl.textContent=`Great rescue! ${DOGS[level-1].name} joins next.`;setTimeout(buildLevel,900)}else{statusEl.textContent="🏆 Whole pack rescued! Tap New Game to play again.";cancelAnimationFrame(loop)}}}
 function tick(now){const dt=Math.min(40,now-last);last=now;moveDogs(dt);updateFurnitureWraps();updateDogCrossings();drawLeashes();updateWhine(dt);checkWin(dt);loop=requestAnimationFrame(tick)}
